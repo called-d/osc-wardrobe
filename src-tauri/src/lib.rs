@@ -1,3 +1,5 @@
+use mlua::Lua;
+use mlua::prelude::LuaResult;
 use tauri::{App, Manager};
 use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use rosc::{OscMessage, OscPacket};
@@ -15,6 +17,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .setup(|app| {
+            spawn_lua_thread(app)?;
             setup_tray_menu(app)?;
             setup_osc_server(app);
             Ok(())
@@ -29,6 +32,21 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![greet])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn spawn_lua_thread(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+    let app_handle = app.app_handle();
+    std::thread::spawn(move || {
+        lua_main().unwrap();
+    });
+    Ok(())
+}
+
+fn lua_main() -> LuaResult<()> {
+    let lua = Lua::new();
+
+    lua.load("(function() local i = 1; while true do print(i); i = i + 1; end end)()").exec()?;
+    Ok(())
 }
 
 async fn process_osc() -> Result<(), Box<dyn std::error::Error>> {
