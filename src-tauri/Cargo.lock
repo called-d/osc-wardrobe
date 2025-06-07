@@ -2641,7 +2641,7 @@ name = "osc-wardrobe"
 version = "0.1.0"
 dependencies = [
  "notify",
- "rosc 0.11.4",
+ "rosc",
  "serde",
  "serde_json",
  "tauri",
@@ -3273,17 +3273,6 @@ checksum = "b2e63d9e6b0d090be1485cf159b1e04c3973d2d3e1614963544ea2ff47a4a981"
 dependencies = [
  "byteorder",
  "nom",
-]
-
-[[package]]
-name = "rosc"
-version = "0.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd37602e1513794e952274082d074e8d31aa7f64d047e3acb746c91db40600a5"
-dependencies = [
- "byteorder",
- "nom",
- "time",
 ]
 
 [[package]]
@@ -4582,7 +4571,7 @@ dependencies = [
  "hyper-util",
  "log",
  "network-interface",
- "rosc 0.10.1",
+ "rosc",
  "serde",
  "serde_json",
  "socket2",
