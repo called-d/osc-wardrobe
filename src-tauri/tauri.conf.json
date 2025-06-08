@@ -9,6 +9,15 @@
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
+  "plugins": {
+    "cli": {
+      "args": [
+        {
+          "name": "overwrite-all-lua"
+        }
+      ]
+    }
+  },
   "app": {
     "windows": [
       {

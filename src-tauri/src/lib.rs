@@ -11,6 +11,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::path::BaseDirectory;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Manager};
+use tauri_plugin_cli::CliExt;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -21,6 +22,7 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_cli::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(LevelFilter::Trace)
@@ -61,6 +63,25 @@ fn setup_lua(
         .resolve("resources/lua", BaseDirectory::Resource)?;
 
     let lua_dir = lua_dir(app.app_handle());
+
+    if let Ok(matches) = app.cli().matches() {
+        if let Some(arg_data) = matches.args.get("overwrite-all-lua") {
+            if let serde_json::Value::Bool(true) = arg_data.value {
+                debug!("overwrite-all-lua true");
+                fs_extra::dir::remove(&lua_dir)?;
+            }
+        }
+    }
+    match app.cli().matches() {
+        Ok(matches) => {
+            println!(
+                "overwrite all lua, {:?}",
+                matches.args.get("overwrite-all-lua")
+            )
+        }
+        Err(_) => {}
+    }
+
     if lua::extract_lua_dir_if_needed(lua_dir_src, &lua_dir)? {
         debug!("extracted: {:?}", lua_dir);
     } else {
