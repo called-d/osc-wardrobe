@@ -1,4 +1,5 @@
 use crate::application_event::ApplicationEvent;
+use log::trace;
 use mlua::prelude::LuaResult;
 use mlua::Lua;
 use std::sync::mpsc::{Receiver, Sender};
@@ -14,6 +15,7 @@ pub enum LuaEngineEvent {
 
 impl LuaEngine {
     pub fn new(tx: Sender<ApplicationEvent>, rx: Receiver<LuaEngineEvent>) -> LuaEngine {
+        trace!("LuaEngine::new");
         LuaEngine {
             lua: Lua::new(),
             tx,

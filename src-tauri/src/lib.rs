@@ -4,6 +4,7 @@ mod osc;
 
 use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
+use log::*;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{App, Manager};
@@ -17,13 +18,22 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(LevelFilter::Trace)
+                .level_for("vrchat_osc::mdns::task", LevelFilter::Info)
+                .level_for("hickory_proto::rr::record_data", LevelFilter::Info)
+                .level_for("vrchat_osc::mdns::utils", LevelFilter::Info)
+                .level_for("vrchat_osc::mdns::task", LevelFilter::Warn)
+                .build(),
+        )
         .setup(|app| {
             let (tx, rx) = channel();
             let lua_engine_event_sender = spawn_lua_thread(tx.clone())?;
             setup_tray_menu(app)?;
             let osc_receiver = setup_osc_server(app);
             setup_event_processor(app, rx, osc_receiver, lua_engine_event_sender);
+            info!("setup done.");
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -52,6 +62,7 @@ fn spawn_lua_thread(
 fn setup_osc_server(app: &mut App) -> tokio::sync::mpsc::UnboundedReceiver<osc::OscEvent> {
     let app_handle = app.app_handle();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    debug!("setup_osc_server: start");
     let _osc_handle = tauri::async_runtime::spawn(async move {
         osc::OscService::process_osc(tx).await.unwrap();
     });
@@ -77,12 +88,12 @@ fn setup_event_processor(
             tokio::select! {
                 Some(osc_msg) = osc_receiver.recv() => { match osc_msg {
                     osc::OscEvent::Message(message) => {
-                        println!("osc received")
+                        debug!("osc received {:?}", message);
                     }
                 } },
                 _ = tokio::time::sleep(tokio::time::Duration::from_millis(10)) => {},
                 else => {
-                    println!("channel is closed");
+                    warn!("channel is closed");
                 },
             }
         }
