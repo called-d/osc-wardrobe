@@ -1,6 +1,10 @@
+mod application_event;
 mod lua;
 mod osc;
 
+use crate::application_event::ApplicationEvent;
+use crate::lua::LuaEngineEvent;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{App, Manager};
 
@@ -15,9 +19,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .setup(|app| {
-            spawn_lua_thread(app)?;
+            let (tx, rx) = channel();
+            let lua_engine_event_sender = spawn_lua_thread(tx.clone())?;
             setup_tray_menu(app)?;
-            setup_osc_server(app);
+            let osc_receiver = setup_osc_server(app);
+            setup_event_processor(app, rx, osc_receiver, lua_engine_event_sender);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -32,19 +38,55 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn spawn_lua_thread(app: &App) -> Result<(), Box<dyn std::error::Error>> {
-    let app_handle = app.app_handle();
+fn spawn_lua_thread(
+    tx: Sender<ApplicationEvent>,
+) -> Result<Sender<LuaEngineEvent>, Box<dyn std::error::Error>> {
+    let (tx2, rx2) = channel();
     std::thread::spawn(move || {
-        let engine = lua::LuaEngine::new();
+        let engine = lua::LuaEngine::new(tx, rx2);
         let _ = engine.main();
     });
-    Ok(())
+    Ok(tx2)
 }
 
-fn setup_osc_server(app: &mut App) {
+fn setup_osc_server(app: &mut App) -> tokio::sync::mpsc::UnboundedReceiver<osc::OscEvent> {
     let app_handle = app.app_handle();
-    let _osc_handle =
-        tauri::async_runtime::spawn(async move { osc::OscService::process_osc().await.unwrap() });
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let _osc_handle = tauri::async_runtime::spawn(async move {
+        osc::OscService::process_osc(tx).await.unwrap();
+    });
+    rx
+}
+fn setup_event_processor(
+    app: &mut App,
+    application_event_receiver: Receiver<ApplicationEvent>,
+    mut osc_receiver: tokio::sync::mpsc::UnboundedReceiver<osc::OscEvent>,
+    lua_sender: Sender<LuaEngineEvent>,
+) {
+    let app_handle = app.app_handle().clone();
+    let _ = tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::task::yield_now().await;
+            if let Ok(app_event) = application_event_receiver.try_recv() {
+                match app_event {
+                    ApplicationEvent::Exit => {
+                        app_handle.exit(0);
+                    }
+                }
+            }
+            tokio::select! {
+                Some(osc_msg) = osc_receiver.recv() => { match osc_msg {
+                    osc::OscEvent::Message(message) => {
+                        println!("osc received")
+                    }
+                } },
+                _ = tokio::time::sleep(tokio::time::Duration::from_millis(10)) => {},
+                else => {
+                    println!("channel is closed");
+                },
+            }
+        }
+    });
 }
 
 fn setup_tray_menu(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
