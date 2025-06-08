@@ -5,10 +5,12 @@ mod osc;
 use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
 use log::*;
+use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder};
+use tauri::path::BaseDirectory;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-use tauri::{App, Manager};
+use tauri::{App, AppHandle, Manager};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -30,7 +32,7 @@ pub fn run() {
         )
         .setup(|app| {
             let (tx, rx) = channel();
-            let lua_engine_event_sender = spawn_lua_thread(tx.clone())?;
+            let lua_engine_event_sender = setup_lua(app, tx.clone())?;
             setup_tray_menu(app, tx.clone())?;
             let osc_receiver = setup_osc_server(app);
             setup_event_processor(app, rx, osc_receiver, lua_engine_event_sender);
@@ -49,12 +51,30 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-fn spawn_lua_thread(
+fn setup_lua(
+    app: &App,
     tx: Sender<ApplicationEvent>,
 ) -> Result<Sender<LuaEngineEvent>, Box<dyn std::error::Error>> {
+    debug!("extract lua directory");
+    let lua_dir_src = app
+        .path()
+        .resolve("resources/lua", BaseDirectory::Resource)?;
+
+    let lua_dir = lua_dir(app.app_handle());
+    if lua::extract_lua_dir_if_needed(lua_dir_src, &lua_dir)? {
+        debug!("extracted: {:?}", lua_dir);
+    } else {
+        debug!("already exists");
+    }
+
+    debug!("spawn lua_thread");
     let (tx2, rx2) = channel();
     std::thread::spawn(move || {
-        let engine = lua::LuaEngine::new(tx, rx2);
+        let engine = lua::LuaEngine::new(lua::LuaEngineOption {
+            base_dir: lua_dir,
+            lua_engine_event_receiver: rx2,
+            application_event_sender: tx,
+        });
         let _ = engine.main();
     });
     Ok(tx2)
@@ -101,12 +121,30 @@ fn setup_event_processor(
     });
 }
 
+fn lua_dir(app: &AppHandle) -> PathBuf {
+    app.path()
+        .resolve("lua", BaseDirectory::AppData)
+        .expect("lua dir not found")
+}
+fn open_dir<P>(path: P) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: AsRef<std::path::Path>,
+{
+    tauri_plugin_opener::open_path(path, None::<&str>)?;
+    Ok(())
+}
+
 fn setup_tray_menu(
     app: &mut App,
     tx: Sender<ApplicationEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let directory_menu = SubmenuBuilder::new(app, "Open Directory")
+        .text("directory_lua", "Lua")
+        .text("directory_common", "Common")
+        .build()?;
+    let separator = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&quit_i])?;
+    let menu = Menu::with_items(app, &[&directory_menu, &separator, &quit_i])?;
 
     let sender_ = tx.clone();
     let _tray = TrayIconBuilder::new()
@@ -115,6 +153,7 @@ fn setup_tray_menu(
         .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => sender_.send(ApplicationEvent::Exit).unwrap(),
+            "directory_lua" => open_dir(lua_dir(app)).unwrap(),
             _ => (),
         })
         .on_tray_icon_event(|tray, event| {

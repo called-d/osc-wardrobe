@@ -29,4 +29,5 @@ notify = { version = "8.0.0", features = ["serde"] }
 tauri-plugin-log = "2"
 mlua = { version = "0.10", features = ["lua54", "vendored"] }
 log = "0.4"
+fs_extra = "1.3"
 
