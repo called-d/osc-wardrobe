@@ -6,7 +6,8 @@ use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
 use log::*;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{App, Manager};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -30,7 +31,7 @@ pub fn run() {
         .setup(|app| {
             let (tx, rx) = channel();
             let lua_engine_event_sender = spawn_lua_thread(tx.clone())?;
-            setup_tray_menu(app)?;
+            setup_tray_menu(app, tx.clone())?;
             let osc_receiver = setup_osc_server(app);
             setup_event_processor(app, rx, osc_receiver, lua_engine_event_sender);
             info!("setup done.");
@@ -100,21 +101,24 @@ fn setup_event_processor(
     });
 }
 
-fn setup_tray_menu(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+fn setup_tray_menu(
+    app: &mut App,
+    tx: Sender<ApplicationEvent>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&quit_i])?;
+
+    let sender_ = tx.clone();
     let _tray = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "quit" => {
-                app.exit(0);
-            }
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(move |app, event| match event.id.as_ref() {
+            "quit" => sender_.send(ApplicationEvent::Exit).unwrap(),
             _ => (),
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
+            if let TrayIconEvent::DoubleClick { .. } = event {
                 let app = tray.app_handle();
                 if let Some(webview_window) = app.get_webview_window("main") {
                     let _ = webview_window.show();
