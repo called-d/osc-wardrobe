@@ -1,7 +1,9 @@
 use crate::osc::OscEvent::Message;
-use log::{info, trace};
+use log::{info, trace, warn};
 use rosc::{OscMessage, OscPacket};
-use tokio::sync::mpsc::UnboundedSender;
+use std::sync::Arc;
+use tokio::sync::mpsc::{Receiver, UnboundedSender};
+use tokio::sync::Mutex;
 use vrchat_osc::models::{OscNode, OscRootNode};
 use vrchat_osc::{ServiceType, VRChatOSC};
 
@@ -34,17 +36,20 @@ fn debug_str_osc_node(node: &OscNode, key: &str, depth: u8, is_last: bool) -> St
 impl OscService {
     pub async fn process_osc(
         sender: UnboundedSender<OscEvent>,
+        mut receiver: Receiver<OscEvent>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Initialize VRChatOSC instance");
         let vrchat_osc = VRChatOSC::new().await?;
 
         let cloned_vrchat_osc = vrchat_osc.clone();
+        let receiver = Arc::new(Mutex::new(receiver));
         vrchat_osc
             .on_connect(move |res| match res {
                 ServiceType::Osc(name, addr) => {
                     info!("Connected to OSC server: {} at {}", name, addr);
                     let vrchat_osc = cloned_vrchat_osc.clone();
                     // Send a message to the OSC server
+                    let receiver_ = receiver.clone();
                     tokio::spawn(async move {
                         vrchat_osc
                             .send_to_addr(
@@ -57,6 +62,30 @@ impl OscService {
                             .await
                             .unwrap();
                         info!("Sent message to OSC server.");
+
+                        loop {
+                            tokio::task::yield_now().await;
+                            let mut receiver = receiver_.lock().await;
+                            tokio::select! {
+                                Some(osc_msg) = receiver.recv() => { match osc_msg {
+                                    Message(message) => {
+                                        vrchat_osc
+                                            .send_to_addr(
+                                                OscPacket::Message(message),
+                                                addr,
+                                            )
+                                            .await
+                                            .unwrap();
+                                        info!("Sent message to OSC server.");
+                                    }
+                                };
+                                },
+                                _ = tokio::time::sleep(tokio::time::Duration::from_millis(10)) => {},
+                                else => {
+                                    warn!("channel is closed");
+                                },
+                            }
+                        }
                     });
                 }
                 ServiceType::OscQuery(name, addr) => {

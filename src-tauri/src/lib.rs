@@ -34,10 +34,11 @@ pub fn run() {
         )
         .setup(|app| {
             let (tx, rx) = channel();
+            let (tx2, rx2) = tokio::sync::mpsc::channel(1000);
             let lua_engine_event_sender = setup_lua(app, tx.clone())?;
             setup_tray_menu(app, tx.clone())?;
-            let osc_receiver = setup_osc_server(app);
-            setup_event_processor(app, rx, osc_receiver, lua_engine_event_sender);
+            let osc_receiver = setup_osc_server(app, rx2);
+            setup_event_processor(app, rx, osc_receiver, lua_engine_event_sender, tx2);
             info!("setup done.");
             Ok(())
         })
@@ -111,12 +112,15 @@ fn setup_lua(
     Ok(tx2)
 }
 
-fn setup_osc_server(app: &mut App) -> tokio::sync::mpsc::UnboundedReceiver<osc::OscEvent> {
+fn setup_osc_server(
+    app: &mut App,
+    receiver: tokio::sync::mpsc::Receiver<osc::OscEvent>,
+) -> tokio::sync::mpsc::UnboundedReceiver<osc::OscEvent> {
     let app_handle = app.app_handle();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     debug!("setup_osc_server: start");
     let _osc_handle = tauri::async_runtime::spawn(async move {
-        osc::OscService::process_osc(tx).await.unwrap();
+        osc::OscService::process_osc(tx, receiver).await.unwrap();
     });
     rx
 }
@@ -141,11 +145,28 @@ fn osc_to_json(v: &rosc::OscType) -> serde_json::Value {
         }
     }
 }
+fn json_to_osc(v: &serde_json::Value) -> rosc::OscType {
+    use serde_json::Value::*;
+    match v {
+        Bool(b) => rosc::OscType::Bool(*b),
+        Null => rosc::OscType::Nil,
+        Number(n) => rosc::OscType::Float(
+            serde_json::from_str::<f32>(&serde_json::to_string(n).unwrap()).unwrap(),
+        ),
+        String(s) => rosc::OscType::String(s.to_string()),
+        Array(a) => rosc::OscType::Array(a.iter().map(json_to_osc).collect()),
+        _ => {
+            debug!("not implemented for {:?}", v);
+            rosc::OscType::Nil
+        }
+    }
+}
 fn setup_event_processor(
     app: &mut App,
     application_event_receiver: Receiver<ApplicationEvent>,
     mut osc_receiver: tokio::sync::mpsc::UnboundedReceiver<osc::OscEvent>,
     lua_sender: Sender<LuaEngineEvent>,
+    osc_sender: tokio::sync::mpsc::Sender<osc::OscEvent>,
 ) {
     let app_handle = app.app_handle().clone();
     let _ = tauri::async_runtime::spawn(async move {
@@ -155,6 +176,22 @@ fn setup_event_processor(
                 match app_event {
                     ApplicationEvent::Exit => {
                         app_handle.exit(0);
+                    }
+                    ApplicationEvent::SendOsc(addr, args) => {
+                        osc_sender
+                            .send(osc::OscEvent::Message(rosc::OscMessage {
+                                addr,
+                                args: args
+                                    .as_array()
+                                    .expect("args is array")
+                                    .iter()
+                                    .map(json_to_osc)
+                                    .collect(),
+                            }))
+                            .await
+                            .unwrap_or_else(|err| {
+                                warn!("failed to send OSC message (mpsc event queue): {:?}", err);
+                            });
                     }
                 }
             }

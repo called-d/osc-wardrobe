@@ -1,8 +1,8 @@
 use crate::application_event::ApplicationEvent;
 use fs_extra;
 use log::{debug, trace, warn};
-use mlua::prelude::LuaResult;
-use mlua::{Function, IntoLuaMulti, Lua, LuaSerdeExt, MultiValue};
+use mlua::prelude::{LuaMultiValue, LuaResult};
+use mlua::{Function, IntoLuaMulti, Lua, LuaSerdeExt, MultiValue, Table};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
@@ -26,10 +26,12 @@ pub enum LuaEngineEvent {
 impl LuaEngine {
     pub fn new(option: LuaEngineOption) -> LuaEngine {
         trace!("LuaEngine::new");
-        LuaEngine {
+        let engine = LuaEngine {
             lua: Lua::new(),
             option,
-        }
+        };
+        engine.load_libraries();
+        engine
     }
     // pub fn call(self, function: &str, args: impl IntoLuaMulti) -> mlua::Result<()> {
     //     trace!("LuaEngine::call {:}", function);
@@ -94,6 +96,46 @@ impl LuaEngine {
         let f = self.lua.globals().get::<Function>(function_name)?;
         f.call_async(args).await?;
         Ok(())
+    }
+
+    fn load_libraries(&self) {
+        let lua = &self.lua;
+        let package_loaded = lua
+            .named_registry_value::<Table>("_LOADED")
+            .expect("_LOADED");
+        let osc_lib = lua.create_table().expect("create_table osc_lib");
+        let sender = self.option.application_event_sender.clone();
+        osc_lib
+            .set(
+                "send",
+                lua.create_function(move |lua, args: LuaMultiValue| {
+                    if args.len() < 2 {
+                        return Ok([
+                            lua.null(),
+                            mlua::Value::String(lua.create_string("no address and args").unwrap()),
+                        ]);
+                    }
+                    let Some(mlua::Value::String(addr)) = args.get(0) else {
+                        return Ok([
+                            lua.null(),
+                            mlua::Value::String(
+                                lua.create_string("address is not string").unwrap(),
+                            ),
+                        ]);
+                    };
+                    sender
+                        .send(ApplicationEvent::SendOsc(
+                            addr.to_string_lossy(),
+                            serde_json::to_value(&args.into_vec()[1..]).unwrap(),
+                        ))
+                        .expect("application event send osc");
+                    Ok([mlua::Value::Boolean(true), lua.null()])
+                })
+                .expect("create_function"),
+            )
+            .expect("osc.send =");
+        package_loaded.set("osc", &osc_lib).expect("osc");
+        lua.globals().set("osc", osc_lib).expect("osc");
     }
 }
 
