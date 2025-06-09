@@ -91,12 +91,22 @@ fn setup_lua(
     debug!("spawn lua_thread");
     let (tx2, rx2) = channel();
     std::thread::spawn(move || {
-        let engine = lua::LuaEngine::new(lua::LuaEngineOption {
-            base_dir: lua_dir,
-            lua_engine_event_receiver: rx2,
-            application_event_sender: tx,
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let engine = lua::LuaEngine::new(lua::LuaEngineOption {
+                base_dir: lua_dir,
+                lua_engine_event_receiver: rx2,
+                application_event_sender: tx,
+            });
+            let _ = engine.main().await;
+
+            loop {
+                engine.process_event().await;
+            }
         });
-        let _ = engine.main();
     });
     Ok(tx2)
 }
@@ -109,6 +119,27 @@ fn setup_osc_server(app: &mut App) -> tokio::sync::mpsc::UnboundedReceiver<osc::
         osc::OscService::process_osc(tx).await.unwrap();
     });
     rx
+}
+fn osc_to_json(v: &rosc::OscType) -> serde_json::Value {
+    use rosc::OscType::*;
+    use serde_json::json;
+    match v {
+        Int(i) => json!(i),
+        Float(f) => json!(f),
+        String(s) => json!(s),
+        Long(l) => json!(l.to_string()),
+        Double(d) => json!(d),
+        Char(c) => json!(c),
+        Color(color) => json!((color.red, color.green, color.blue, color.alpha)),
+        Bool(b) => json!(b),
+        Array(arr) => arr.content.iter().map(osc_to_json).collect(),
+        Nil => json!(null),
+        Inf => json!(f32::INFINITY),
+        _ => {
+            debug!("not implemented for {:?}", v);
+            json!(null)
+        }
+    }
 }
 fn setup_event_processor(
     app: &mut App,
@@ -131,6 +162,10 @@ fn setup_event_processor(
                 Some(osc_msg) = osc_receiver.recv() => { match osc_msg {
                     osc::OscEvent::Message(message) => {
                         debug!("osc received {:?}", message);
+                        lua_sender.send(LuaEngineEvent::OscReceived(
+                            message.addr,
+                            serde_json::Value::Array(message.args.iter().map(osc_to_json).collect()),
+                        )).unwrap();
                     }
                 } },
                 _ = tokio::time::sleep(tokio::time::Duration::from_millis(10)) => {},

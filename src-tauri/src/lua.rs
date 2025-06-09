@@ -1,8 +1,9 @@
 use crate::application_event::ApplicationEvent;
 use fs_extra;
-use log::{debug, trace};
+use log::{debug, trace, warn};
 use mlua::prelude::LuaResult;
-use mlua::Lua;
+use mlua::{Function, IntoLuaMulti, Lua, LuaSerdeExt, MultiValue};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -18,7 +19,8 @@ pub struct LuaEngine {
 }
 
 pub enum LuaEngineEvent {
-    Reload,
+    OscReceived(String, serde_json::Value),
+    // Reload,
 }
 
 impl LuaEngine {
@@ -29,13 +31,68 @@ impl LuaEngine {
             option,
         }
     }
-    pub fn main(self) -> LuaResult<()> {
-        let lua = self.lua;
+    // pub fn call(self, function: &str, args: impl IntoLuaMulti) -> mlua::Result<()> {
+    //     trace!("LuaEngine::call {:}", function);
+    // }
+    pub async fn main(&self) -> LuaResult<()> {
+        let lua = &self.lua;
 
-        let main_file = self.option.base_dir.join("main.lua");
-        debug!("main.lua exists: {}", main_file.exists());
-        // std::thread::sleep(std::time::Duration::from_secs(10));
+        let sleep = lua.create_async_function(move |_lua, s: f32| async move {
+            debug!("sleep({:?})", s);
+            tokio::time::sleep(tokio::time::Duration::from_secs_f32(s)).await;
+            Ok(())
+        })?;
+        lua.globals().set("sleep", sleep)?;
+
+        let main_path = self.option.base_dir.join("main.lua");
+        debug!("main.lua exists: {}", main_path.exists());
+        let mut main = std::fs::File::open(&main_path)?;
+        let mut buffer = String::new();
+        main.read_to_string(&mut buffer)?;
+        let _ = lua
+            .load(buffer.as_str())
+            .exec_async()
+            .await
+            .expect("load main file");
+        drop(main);
+        let main = lua
+            .globals()
+            .get::<mlua::Function>("main")
+            .expect("main should be function");
+        let return_value = main.call_async::<MultiValue>(()).await?;
+
         // self.tx.send(ApplicationEvent::Exit).unwrap();
+        debug!("main returns {:?}", return_value);
+        Ok(())
+    }
+
+    pub async fn process_event(&self) -> () {
+        // trace!("LuaEngine::process_event");
+        loop {
+            if let Ok(event) = self.option.lua_engine_event_receiver.try_recv() {
+                match event {
+                    LuaEngineEvent::OscReceived(s, v) => {
+                        if let Err(e) = self
+                            .call_function("receive", (s, self.lua.to_value(&v)))
+                            .await
+                        {
+                            warn!("error on  Osc receive event: {:?}", e);
+                        };
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
+    async fn call_function(
+        &self,
+        function_name: &str,
+        args: impl IntoLuaMulti,
+    ) -> mlua::Result<()> {
+        let f = self.lua.globals().get::<Function>(function_name)?;
+        f.call_async(args).await?;
         Ok(())
     }
 }

@@ -27,7 +27,7 @@ tokio = { version = "1", features = ["full"] }
 rosc = "~0.10"
 notify = { version = "8.0.0", features = ["serde"] }
 tauri-plugin-log = "2"
-mlua = { version = "0.10", features = ["lua54", "vendored"] }
+mlua = { version = "0.10", features = ["lua54", "vendored", "serialize", "async"] }
 log = "0.4"
 fs_extra = "1.3"
 
