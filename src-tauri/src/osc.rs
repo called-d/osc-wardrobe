@@ -69,6 +69,7 @@ impl OscService {
                             tokio::select! {
                                 Some(osc_msg) = receiver.recv() => { match osc_msg {
                                     Message(message) => {
+                                        trace!("send message: {:?} {:?}", message.addr, message.args);
                                         vrchat_osc
                                             .send_to_addr(
                                                 OscPacket::Message(message),
@@ -95,14 +96,16 @@ impl OscService {
                     tokio::spawn(async move {
                         // NOTE: When actually retrieving parameters, you should implement retry logic here.
                         // If VRChat has just started, it is possible that valid values may not be returned immediately.
-                        let params = vrchat_osc
+                        match vrchat_osc
                             .get_parameter_from_addr("/avatar/parameters", addr)
                             .await
-                            .unwrap();
-                        info!(
-                            "Received parameters: \n{}",
-                            debug_str_osc_node(&params, "/avatar/parameters", 0, false)
-                        );
+                        {
+                            Ok(params) => info!(
+                                "Received parameters: \n{}",
+                                debug_str_osc_node(&params, "/avatar/parameters", 0, false)
+                            ),
+                            Err(err) => warn!("error on get_parameter {:?}", err),
+                        };
                     });
                 }
             })
