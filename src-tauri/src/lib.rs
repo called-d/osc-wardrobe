@@ -97,7 +97,7 @@ fn setup_lua(
             .build()
             .unwrap();
         rt.block_on(async {
-            let engine = lua::LuaEngine::new(lua::LuaEngineOption {
+            let mut engine = lua::LuaEngine::new(lua::LuaEngineOption {
                 base_dir: lua_dir,
                 lua_engine_event_receiver: rx2,
                 application_event_sender: tx,
@@ -193,6 +193,9 @@ fn setup_event_processor(
                                 warn!("failed to send OSC message (mpsc event queue): {:?}", err);
                             });
                     }
+                    ApplicationEvent::ReloadLua => lua_sender
+                        .send(LuaEngineEvent::Reload)
+                        .expect("failed to send LuaEngineEvent::Reload"),
                 }
             }
             tokio::select! {
@@ -231,13 +234,17 @@ fn setup_tray_menu(
     app: &mut App,
     tx: Sender<ApplicationEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let lua_menu = SubmenuBuilder::new(app, "Lua")
+        .text("lua_reload", "Reload")
+        .separator()
+        .build()?;
     let directory_menu = SubmenuBuilder::new(app, "Open Directory")
         .text("directory_lua", "Lua")
         .text("directory_common", "Common")
         .build()?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&directory_menu, &separator, &quit_i])?;
+    let menu = Menu::with_items(app, &[&lua_menu, &directory_menu, &separator, &quit_i])?;
 
     let sender_ = tx.clone();
     let _tray = TrayIconBuilder::new()
@@ -247,6 +254,10 @@ fn setup_tray_menu(
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => sender_.send(ApplicationEvent::Exit).unwrap(),
             "directory_lua" => open_dir(lua_dir(app)).unwrap(),
+            "lua_reload" => {
+                debug!("reload");
+                sender_.send(ApplicationEvent::ReloadLua).unwrap()
+            }
             _ => (),
         })
         .on_tray_icon_event(|tray, event| {

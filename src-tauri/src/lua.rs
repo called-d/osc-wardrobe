@@ -14,30 +14,32 @@ pub struct LuaEngineOption {
 }
 
 pub struct LuaEngine {
-    lua: Lua,
+    lua: std::sync::Mutex<Lua>,
     option: LuaEngineOption,
 }
 
 pub enum LuaEngineEvent {
     OscReceived(String, serde_json::Value),
-    // Reload,
+    Reload,
 }
 
 impl LuaEngine {
     pub fn new(option: LuaEngineOption) -> LuaEngine {
         trace!("LuaEngine::new");
         let engine = LuaEngine {
-            lua: Lua::new(),
+            lua: std::sync::Mutex::new(Lua::new()),
             option,
         };
         engine.load_libraries();
         engine
     }
-    // pub fn call(self, function: &str, args: impl IntoLuaMulti) -> mlua::Result<()> {
-    //     trace!("LuaEngine::call {:}", function);
-    // }
+    async fn reload(&mut self) -> LuaResult<()> {
+        *self.lua.get_mut().expect("get mut") = Lua::new();
+        self.load_libraries();
+        self.main().await
+    }
     pub async fn main(&self) -> LuaResult<()> {
-        let lua = &self.lua;
+        let lua = &self.lua.lock().expect("get lock for main()");
 
         let sleep = lua.create_async_function(move |_lua, s: f32| async move {
             debug!("sleep({:?})", s);
@@ -68,19 +70,23 @@ impl LuaEngine {
         Ok(())
     }
 
-    pub async fn process_event(&self) -> () {
+    pub async fn process_event(&mut self) -> () {
         // trace!("LuaEngine::process_event");
         loop {
             if let Ok(event) = self.option.lua_engine_event_receiver.try_recv() {
                 match event {
                     LuaEngineEvent::OscReceived(s, v) => {
-                        if let Err(e) = self
-                            .call_function("receive", (s, self.lua.to_value(&v)))
-                            .await
-                        {
+                        let args = {
+                            self.lua
+                                .lock()
+                                .expect("get lock for receive()")
+                                .to_value(&v)
+                        };
+                        if let Err(e) = self.call_function("receive", (s, args)).await {
                             warn!("error on  Osc receive event: {:?}", e);
                         };
                     }
+                    LuaEngineEvent::Reload => self.reload().await.expect("reload"),
                 }
             } else {
                 break;
@@ -93,13 +99,16 @@ impl LuaEngine {
         function_name: &str,
         args: impl IntoLuaMulti,
     ) -> mlua::Result<()> {
-        let f = self.lua.globals().get::<Function>(function_name)?;
+        let f = {
+            let lua = &self.lua.lock().expect("get lock for call_function()");
+            lua.globals().get::<Function>(function_name)?
+        };
         f.call_async(args).await?;
         Ok(())
     }
 
     fn load_libraries(&self) {
-        let lua = &self.lua;
+        let lua = &self.lua.lock().expect("get lock for load_libraries()");
         let package_loaded = lua
             .named_registry_value::<Table>("_LOADED")
             .expect("_LOADED");
