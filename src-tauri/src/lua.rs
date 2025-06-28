@@ -41,13 +41,6 @@ impl LuaEngine {
     pub async fn main(&self) -> LuaResult<()> {
         let lua = &self.lua.lock().expect("get lock for main()");
 
-        let sleep = lua.create_async_function(move |_lua, s: f32| async move {
-            debug!("sleep({:?})", s);
-            tokio::time::sleep(tokio::time::Duration::from_secs_f32(s)).await;
-            Ok(())
-        })?;
-        lua.globals().set("sleep", sleep)?;
-
         let main_path = self.option.base_dir.join("main.lua");
         debug!("main.lua exists: {}", main_path.exists());
         let mut main = std::fs::File::open(&main_path)?;
@@ -145,6 +138,15 @@ impl LuaEngine {
             .expect("osc.send =");
         package_loaded.set("osc", &osc_lib).expect("osc");
         lua.globals().set("osc", osc_lib).expect("osc");
+
+        let sleep = lua
+            .create_async_function(move |_lua, s: f32| async move {
+                debug!("sleep({:?})", s);
+                tokio::time::sleep(tokio::time::Duration::from_secs_f32(s)).await;
+                Ok(())
+            })
+            .expect("create_function");
+        lua.globals().set("sleep", sleep).expect("sleep");
     }
 }
 
