@@ -2632,13 +2632,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "notify-debouncer-mini"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a689eb4262184d9a1727f9087cd03883ea716682ab03ed24efec57d7716dccb8"
+dependencies = [
+ "log",
+ "notify",
+ "notify-types",
+ "tempfile",
+]
+
+[[package]]
 name = "notify-types"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e0826a989adedc2a244799e823aece04662b66609d96af8dff7ac6df9a8925d"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "num-conv"
@@ -2968,7 +2977,7 @@ dependencies = [
  "fs_extra",
  "log",
  "mlua",
- "notify",
+ "notify-debouncer-mini",
  "rosc",
  "serde",
  "serde_json",
