@@ -5,6 +5,7 @@ mod osc;
 use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
 use log::*;
+use notify::Watcher;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder};
@@ -207,6 +208,32 @@ fn setup_definitions(
     lua_event_sender
         .send(LuaEngineEvent::DefinitionUpdated(get_definition(&defs_dir)))
         .unwrap();
+
+    let (tx, rx) = channel();
+    let mut watcher = notify::recommended_watcher(tx)?;
+    let _ = tauri::async_runtime::spawn(async move {
+        watcher
+            .watch(&defs_dir, notify::RecursiveMode::Recursive)
+            .expect("watcher start");
+        loop {
+            tokio::task::yield_now().await;
+            if let Ok(event) = rx.try_recv() {
+                match event {
+                    Ok(event) => {
+                        debug!("event: {:?}", event);
+                        lua_event_sender
+                            .send(LuaEngineEvent::DefinitionUpdated(get_definition(&defs_dir)))
+                            .unwrap();
+                    }
+                    Err(e) => {
+                        warn!("notify error: {:?}", e);
+                    }
+                }
+            } else {
+                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            }
+        }
+    });
     Ok(())
 }
 
