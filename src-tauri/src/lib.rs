@@ -5,7 +5,7 @@ mod osc;
 use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
 use log::*;
-use notify::Watcher;
+use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder};
@@ -210,10 +210,11 @@ fn setup_definitions(
         .unwrap();
 
     let (tx, rx) = channel();
-    let mut watcher = notify::recommended_watcher(tx)?;
+    let mut debouncer = new_debouncer(std::time::Duration::from_secs(2), tx)?;
     let _ = tauri::async_runtime::spawn(async move {
+        let watcher = debouncer.watcher();
         watcher
-            .watch(&defs_dir, notify::RecursiveMode::Recursive)
+            .watch(&defs_dir, RecursiveMode::Recursive)
             .expect("watcher start");
         loop {
             tokio::task::yield_now().await;
@@ -230,7 +231,7 @@ fn setup_definitions(
                     }
                 }
             } else {
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
         }
     });
