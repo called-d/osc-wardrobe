@@ -5,7 +5,7 @@ mod osc;
 use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
 use log::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::path::BaseDirectory;
@@ -36,6 +36,7 @@ pub fn run() {
             let (tx, rx) = channel();
             let (tx2, rx2) = tokio::sync::mpsc::channel(1000);
             let lua_engine_event_sender = setup_lua(app, tx.clone())?;
+            setup_definitions(app, lua_engine_event_sender.clone())?;
             setup_tray_menu(app, tx.clone())?;
             let osc_receiver = setup_osc_server(app, rx2);
             setup_event_processor(app, rx, osc_receiver, lua_engine_event_sender, tx2);
@@ -110,6 +111,103 @@ fn setup_lua(
         });
     });
     Ok(tx2)
+}
+
+fn get_definition(defs_dir: &PathBuf) -> serde_json::Value {
+    trace!("get definition: {:?}", defs_dir);
+    if !defs_dir.exists() {
+        return serde_json::Value::Null;
+    }
+    trace!("get definition _");
+    let mut table = serde_json::json!({});
+    for entry in walkdir::WalkDir::new(defs_dir)
+        .follow_links(true)
+        .into_iter()
+        .filter_entry(|e| !is_hidden(e))
+        .filter_map(|e| e.ok())
+    {
+        if !is_json(&entry) {
+            continue;
+        }
+        let path = entry.path();
+        let Some(keys) = get_keys(defs_dir, path) else {
+            continue;
+        };
+        // read json from file
+        let Ok(file) = std::fs::File::open(path) else {
+            warn!("could not open definition file: {:?}", path);
+            continue;
+        };
+        let Ok::<serde_json::value::Value, _>(json) = serde_json::from_reader(file) else {
+            warn!("could not parse definition file: {:?}", path);
+            continue;
+        };
+        set_value(&mut table, &keys, json);
+    }
+    table
+}
+fn is_hidden(entry: &walkdir::DirEntry) -> bool {
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| entry.depth() > 0 && s.starts_with("."))
+        .unwrap_or(false)
+}
+fn is_json(entry: &walkdir::DirEntry) -> bool {
+    if !entry.file_type().is_file() {
+        return false;
+    }
+    entry.path().extension() == Some("json".as_ref())
+}
+fn get_keys(root: &PathBuf, path: &Path) -> Option<Vec<String>> {
+    let Some(stem) = path.file_stem() else {
+        return None;
+    };
+    let path = path.with_file_name(stem);
+    let Ok(sub) = path.strip_prefix(root) else {
+        return None;
+    };
+    Some(
+        sub.components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect::<Vec<_>>(),
+    )
+}
+fn set_value(table: &mut serde_json::value::Value, keys: &[String], value: serde_json::Value) {
+    let Some((first_key, keys)) = keys.split_first() else {
+        return;
+    };
+    let Some(map) = table.as_object_mut() else {
+        return;
+    };
+    if keys.len() == 0 {
+        map.insert(first_key.into(), value);
+        return;
+    }
+    if let Some(maybe_table) = map.get_mut(first_key) {
+        if maybe_table.is_object() {
+            set_value(maybe_table, keys, value);
+            return;
+        }
+    }
+    map.insert(first_key.into(), serde_json::json!({}));
+    set_value(map.get_mut(first_key).unwrap(), keys, value);
+}
+
+fn setup_definitions(
+    app: &App,
+    lua_event_sender: Sender<LuaEngineEvent>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    trace!("setup definitions");
+    let app_handle = app.app_handle().clone();
+    let defs_dir = defs_dir(&app_handle);
+    if !defs_dir.exists() {
+        std::fs::create_dir_all(&defs_dir)?;
+    }
+    lua_event_sender
+        .send(LuaEngineEvent::DefinitionUpdated(get_definition(&defs_dir)))
+        .unwrap();
+    Ok(())
 }
 
 fn setup_osc_server(
@@ -220,7 +318,12 @@ fn setup_event_processor(
 fn lua_dir(app: &AppHandle) -> PathBuf {
     app.path()
         .resolve("lua", BaseDirectory::AppData)
-        .expect("lua dir not found")
+        .expect("lua dir resolve")
+}
+fn defs_dir(app: &AppHandle) -> PathBuf {
+    app.path()
+        .resolve("defs", BaseDirectory::AppData)
+        .expect("defs dir resolve")
 }
 fn open_dir<P>(path: P) -> Result<(), Box<dyn std::error::Error>>
 where

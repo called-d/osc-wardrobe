@@ -1,5 +1,14 @@
+local function init()
+    setmetatable(wardrobe, {
+        __newindex = function(t, k, v)
+            rawset(t, k, v)
+            if k == "definition" then print("[wardrobe bridge] definition changed") end
+        end
+    })
+end
 
 function main()
+    init()
     local sec = 5.5
     sleep(sec)
     local success, err = osc.send("/avatar/change", "avtr_00000000-0000-4000-0000-000000000000")

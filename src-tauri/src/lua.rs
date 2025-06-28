@@ -20,6 +20,7 @@ pub struct LuaEngine {
 
 pub enum LuaEngineEvent {
     OscReceived(String, serde_json::Value),
+    DefinitionUpdated(serde_json::Value),
     Reload,
 }
 
@@ -79,6 +80,12 @@ impl LuaEngine {
                             warn!("error on  Osc receive event: {:?}", e);
                         };
                     }
+                    LuaEngineEvent::DefinitionUpdated(v) => {
+                        debug!("Definition updated event: {:?}", v);
+                        if let Err(e) = self.set_global(&["wardrobe", "definition"], v) {
+                            warn!("error on  DefinitionUpdated event: {:?}", e);
+                        };
+                    }
                     LuaEngineEvent::Reload => self.reload().await.expect("reload"),
                 }
             } else {
@@ -100,11 +107,35 @@ impl LuaEngine {
         Ok(())
     }
 
+    fn set_global(&self, keys: &[&str], value: serde_json::Value) -> mlua::Result<()> {
+        let (last_key, keys) = keys.split_last().expect("keys must be non-empty");
+        let lua = &self.lua.lock().expect("get lock for set_global()");
+        let mut table = lua.globals();
+        for key in keys {
+            if let Ok(mlua::Value::Table(t)) = table.get(key.to_string()) {
+                table = t
+            } else {
+                let t = lua.create_table()?;
+                table.set(key.to_string(), &t)?;
+                table = t
+            }
+        }
+        table
+            .set(
+                last_key.to_string(),
+                lua.to_value(&value).expect("to_value"),
+            )
+            .expect("set_global key=value");
+        Ok(())
+    }
+
     fn load_libraries(&self) {
         let lua = &self.lua.lock().expect("get lock for load_libraries()");
         let package_loaded = lua
             .named_registry_value::<Table>("_LOADED")
             .expect("_LOADED");
+
+        /* ### osc library ### */
         let osc_lib = lua.create_table().expect("create_table osc_lib");
         let sender = self.option.application_event_sender.clone();
         osc_lib
@@ -139,6 +170,29 @@ impl LuaEngine {
         package_loaded.set("osc", &osc_lib).expect("osc");
         lua.globals().set("osc", osc_lib).expect("osc");
 
+        /* ### wardrobe app bridge ### */
+        let wardrobe_lib = lua.create_table().expect("create_table wardrobe_lib");
+        let sender = self.option.application_event_sender.clone();
+        wardrobe_lib
+            .set(
+                "exit",
+                lua.create_function(move |_, _: LuaMultiValue| {
+                    sender
+                        .send(ApplicationEvent::Exit)
+                        .expect("application event exit");
+                    Ok([mlua::Value::Nil])
+                })
+                .expect("create_function"),
+            )
+            .expect("wardrobe.exit =");
+        package_loaded
+            .set("wardrobe", &wardrobe_lib)
+            .expect("wardrobe");
+        lua.globals()
+            .set("wardrobe", wardrobe_lib)
+            .expect("wardrobe");
+
+        /* ### sleep ### */
         let sleep = lua
             .create_async_function(move |_lua, s: f32| async move {
                 debug!("sleep({:?})", s);
