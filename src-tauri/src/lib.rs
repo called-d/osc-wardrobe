@@ -5,6 +5,7 @@ mod osc;
 use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
 use log::*;
+use mlua::jail::{GetEnvOption, JailOptions, OsClockOption, PackageLibOption};
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -90,6 +91,31 @@ fn setup_lua(
     } else {
         debug!("already exists");
     }
+    std::env::set_current_dir(&lua_dir)?;
+    let package_path = "!\\?.lua;!\\?\\init.lua;.\\?.lua".replace("!", lua_dir.to_str().unwrap());
+    mlua::jail::jail(JailOptions {
+        read_extension_allowlist: Some(["txt", "json"].iter().map(|&s| s.into()).collect()),
+        write_extension_allowlist: Some(["txt", "json", "log"].iter().map(|&s| s.into()).collect()),
+        os_clock: OsClockOption::DownPrecision(5), // 0.1 sec
+        loadfile_root: Some(lua_dir.clone()),
+        deny_load_stdin: true,
+        deny_popen: true,
+        deny_open_stdin: true,
+        deny_exit: true,
+        deny_setlocale: true,
+        package_lib: PackageLibOption {
+            // modify_searchers: // already done by mlua
+            deny_searchpath: true,
+            deny_loadlib: true,
+            path_override: Some(package_path),
+            ..Default::default()
+        },
+        // debug_lib: DebugLibOption::deny_all(), // already done by mlua
+        getenv: GetEnvOption::Prefix(String::from("OSC_WARDROBE_LUA_")),
+        io_root: Some(lua_io_dir(app.app_handle())),
+        rep_max_len: Some(1024),
+        ..Default::default()
+    });
 
     debug!("spawn lua_thread");
     let (tx2, rx2) = channel();
