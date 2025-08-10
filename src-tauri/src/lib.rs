@@ -348,6 +348,9 @@ fn lua_dir(app: &AppHandle) -> PathBuf {
         .resolve("lua", BaseDirectory::AppData)
         .expect("lua dir resolve")
 }
+fn lua_io_dir(app: &AppHandle) -> PathBuf {
+    lua_dir(&app).join("io")
+}
 fn defs_dir(app: &AppHandle) -> PathBuf {
     app.path()
         .resolve("defs", BaseDirectory::AppData)
@@ -369,9 +372,10 @@ fn setup_tray_menu(
         .text("lua_reload", "Reload")
         .separator()
         .build()?;
-    let directory_menu = SubmenuBuilder::new(app, "Open Directory")
+    let directory_menu = SubmenuBuilder::new(app, "Open Folder")
         .text("directory_lua", "Lua")
-        .text("directory_common", "Common")
+        .text("directory_defs", "Definitions")
+        .text("directory_io", "I/O")
         .build()?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -385,6 +389,14 @@ fn setup_tray_menu(
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "quit" => sender_.send(ApplicationEvent::Exit).unwrap(),
             "directory_lua" => open_dir(lua_dir(app)).unwrap(),
+            "directory_io" => {
+                let io_dir = lua_io_dir(app);
+                if !io_dir.exists() {
+                    std::fs::create_dir_all(&io_dir).unwrap();
+                }
+                open_dir(io_dir).unwrap()
+            }
+            "directory_defs" => open_dir(defs_dir(app)).unwrap(),
             "lua_reload" => {
                 debug!("reload");
                 sender_.send(ApplicationEvent::ReloadLua).unwrap()
