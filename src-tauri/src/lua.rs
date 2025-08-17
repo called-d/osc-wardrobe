@@ -2,7 +2,7 @@ use crate::application_event::ApplicationEvent;
 use fs_extra;
 use log::{debug, trace, warn};
 use mlua::prelude::{LuaMultiValue, LuaResult};
-use mlua::{Function, IntoLuaMulti, Lua, LuaSerdeExt, MultiValue, Table};
+use mlua::{IntoLuaMulti, Lua, LuaSerdeExt, MultiValue, Table};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
@@ -97,7 +97,7 @@ impl LuaEngine {
     ) -> mlua::Result<()> {
         let f = {
             let lua = &self.lua.lock().expect("get lock for call_function()");
-            lua.globals().get::<Function>(function_name)?
+            lua.globals().get::<mlua::Function>(function_name)?
         };
         f.call_async(args).await?;
         Ok(())
