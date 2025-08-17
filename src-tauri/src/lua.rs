@@ -53,14 +53,10 @@ impl LuaEngine {
             .await
             .expect("load main file");
         drop(main);
-        let main = lua
-            .globals()
-            .get::<mlua::Function>("main")
-            .expect("main should be function");
-        let return_value = main.call_async::<MultiValue>(()).await?;
-
-        // self.tx.send(ApplicationEvent::Exit).unwrap();
-        debug!("main returns {:?}", return_value);
+        if let Ok(main) = lua.globals().get::<mlua::Function>("main") {
+            let return_value = main.call_async::<MultiValue>(()).await?;
+            debug!("main returns {:?}", return_value);
+        };
         Ok(())
     }
 
