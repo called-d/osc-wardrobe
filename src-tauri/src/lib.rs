@@ -403,9 +403,15 @@ fn setup_tray_menu(
         .text("directory_defs", "Definitions")
         .text("directory_io", "I/O")
         .build()?;
+    let log_menu = SubmenuBuilder::new(app, "Logs")
+        .text("log_lua", "Lua")
+        .build()?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&lua_menu, &directory_menu, &separator, &quit_i])?;
+    let menu = Menu::with_items(
+        app,
+        &[&lua_menu, &directory_menu, &log_menu, &separator, &quit_i],
+    )?;
 
     let sender_ = tx.clone();
     let _tray = TrayIconBuilder::new()
@@ -426,6 +432,12 @@ fn setup_tray_menu(
             "lua_reload" => {
                 debug!("reload");
                 sender_.send(ApplicationEvent::ReloadLua).unwrap()
+            }
+            "log_lua" => {
+                if let Some(log_window) = app.get_webview_window("log-lua") {
+                    let _ = log_window.show();
+                    let _ = log_window.set_focus();
+                }
             }
             _ => (),
         })

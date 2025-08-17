@@ -24,6 +24,14 @@
         "title": "osc-wardrobe",
         "width": 800,
         "height": 600
+      },
+      {
+        "title": "log (lua)",
+        "width": 800,
+        "height": 600,
+        "label": "log-lua",
+        "url": "console.html?target=lua",
+        "visible": false
       }
     ],
     "security": {
