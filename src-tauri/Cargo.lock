@@ -2385,7 +2385,7 @@ dependencies = [
 [[package]]
 name = "lua-src"
 version = "548.1.1"
-source = "git+https://github.com/called-d/lua-src-rs.git?branch=jail#3b35ed50dd15b62a0ce9c74f1f611a15c7156778"
+source = "git+https://github.com/called-d/lua-src-rs.git?branch=jail#555da67e1280982dd8ae8e01b47afee6052bcfd1"
 dependencies = [
  "cc",
 ]
