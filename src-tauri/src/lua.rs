@@ -1,6 +1,7 @@
 use crate::application_event::ApplicationEvent;
 use fs_extra;
 use log::{debug, trace, warn};
+use mlua::jail::{GetEnvOption, JailOptions, OsClockOption, PackageLibOption};
 use mlua::prelude::{LuaMultiValue, LuaResult};
 use mlua::{IntoLuaMulti, Lua, LuaSerdeExt, MultiValue, Table};
 use std::io::Read;
@@ -11,6 +12,7 @@ pub struct LuaEngineOption {
     pub application_event_sender: Sender<ApplicationEvent>,
     pub lua_engine_event_receiver: Receiver<LuaEngineEvent>,
     pub base_dir: PathBuf,
+    pub io_dir: PathBuf,
 }
 
 pub struct LuaEngine {
@@ -27,6 +29,7 @@ pub enum LuaEngineEvent {
 impl LuaEngine {
     pub fn new(option: LuaEngineOption) -> LuaEngine {
         trace!("LuaEngine::new");
+        LuaEngine::jail(&option);
         let engine = LuaEngine {
             lua: std::sync::Mutex::new(Lua::new()),
             option,
@@ -35,6 +38,7 @@ impl LuaEngine {
         engine
     }
     async fn reload(&mut self) -> LuaResult<()> {
+        LuaEngine::jail(&self.option);
         *self.lua.get_mut().expect("get mut") = Lua::new();
         self.load_libraries();
         self.main().await
@@ -197,6 +201,36 @@ impl LuaEngine {
             })
             .expect("create_function");
         lua.globals().set("sleep", sleep).expect("sleep");
+    }
+
+    fn jail(option: &LuaEngineOption) {
+        let package_path =
+            "!\\?.lua;!\\?\\init.lua;.\\?.lua".replace("!", option.base_dir.to_str().unwrap());
+        mlua::jail::jail(JailOptions {
+            read_extension_allowlist: Some(["txt", "json"].iter().map(|&s| s.into()).collect()),
+            write_extension_allowlist: Some(
+                ["txt", "json", "log"].iter().map(|&s| s.into()).collect(),
+            ),
+            os_clock: OsClockOption::DownPrecision(5), // 0.1 sec
+            loadfile_root: Some(option.base_dir.clone()),
+            deny_load_stdin: true,
+            deny_popen: true,
+            deny_open_stdin: true,
+            deny_exit: true,
+            deny_setlocale: true,
+            package_lib: PackageLibOption {
+                // modify_searchers: // already done by mlua
+                deny_searchpath: true,
+                deny_loadlib: true,
+                path_override: Some(package_path),
+                ..Default::default()
+            },
+            // debug_lib: DebugLibOption::deny_all(), // already done by mlua
+            getenv: GetEnvOption::Prefix(String::from("OSC_WARDROBE_LUA_")),
+            io_root: Some(option.io_dir.clone()),
+            rep_max_len: Some(1024),
+            ..Default::default()
+        });
     }
 }
 
