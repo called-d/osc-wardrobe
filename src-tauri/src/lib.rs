@@ -15,10 +15,23 @@ use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Manager};
 use tauri_plugin_cli::CliExt;
 
+#[derive(Debug, Clone)]
+struct AppState {
+    application_event_sender: Sender<ApplicationEvent>,
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+fn reload_lua(state: tauri::State<AppState>) {
+    state
+        .application_event_sender
+        .send(ApplicationEvent::ReloadLua)
+        .unwrap()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +49,9 @@ pub fn run() {
         )
         .setup(|app| {
             let (tx, rx) = channel();
+            app.manage(AppState {
+                application_event_sender: tx.clone(),
+            });
             let (tx2, rx2) = tokio::sync::mpsc::channel(1000);
             let lua_engine_event_sender = setup_lua(app, tx.clone())?;
             setup_definitions(app, lua_engine_event_sender.clone())?;
@@ -52,7 +68,7 @@ pub fn run() {
             }
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet, reload_lua])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

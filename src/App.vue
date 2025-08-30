@@ -1,16 +1,3 @@
-<script setup lang="ts">
-import { ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-
-const greetMsg = ref("");
-const name = ref("");
-
-async function greet() {
-  // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-  greetMsg.value = await invoke("greet", { name: name.value });
-}
-</script>
-
 <template>
   <main class="container">
     <h1>Welcome to Tauri + Vue</h1>
@@ -33,8 +20,27 @@ async function greet() {
       <button type="submit">Greet</button>
     </form>
     <p>{{ greetMsg }}</p>
+
+    <button type="button" @click="reloadLua">Reload Lua</button>
   </main>
 </template>
+
+<script setup lang="ts">
+import {ref} from "vue";
+import {invoke} from "@tauri-apps/api/core";
+
+const greetMsg = ref("");
+const name = ref("");
+
+async function greet() {
+  // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+  greetMsg.value = await invoke("greet", {name: name.value});
+}
+
+async function reloadLua() {
+  await invoke("reload_lua");
+}
+</script>
 
 <style scoped>
 .logo.vite:hover {
