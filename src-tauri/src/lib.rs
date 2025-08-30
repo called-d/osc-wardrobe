@@ -1,21 +1,25 @@
 mod application_event;
+mod log_state;
 mod lua;
 mod osc;
 
 use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
 use log::*;
+use log_state::{get_logs, LogState};
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::path::BaseDirectory;
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Manager};
 use tauri_plugin_cli::CliExt;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct AppState {
+    log_state: Arc<Mutex<log_state::LogState>>,
     application_event_sender: Sender<ApplicationEvent>,
 }
 
@@ -26,8 +30,10 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-fn reload_lua(state: tauri::State<AppState>) {
+fn reload_lua(state: tauri::State<Mutex<AppState>>) {
     state
+        .lock()
+        .expect("get AppState")
         .application_event_sender
         .send(ApplicationEvent::ReloadLua)
         .unwrap()
@@ -35,10 +41,16 @@ fn reload_lua(state: tauri::State<AppState>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let (log_channel, log_receiver) = LogState::create();
     tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .plugin(
             tauri_plugin_log::Builder::new()
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Dispatch(
+                        fern::Dispatch::new().chain(log_channel.sender.clone()),
+                    ),
+                ))
                 .level(LevelFilter::Trace)
                 .level_for("vrchat_osc::mdns::task", LevelFilter::Info)
                 .level_for("hickory_proto::rr::record_data", LevelFilter::Info)
@@ -48,8 +60,13 @@ pub fn run() {
         )
         .setup(|app| {
             let (tx, rx) = channel();
-            app.manage(AppState {
+            let log_state = Arc::new(Mutex::new(log_channel));
+            app.manage(Mutex::new(AppState {
+                log_state: log_state.clone(),
                 application_event_sender: tx.clone(),
+            }));
+            tauri::async_runtime::spawn(async move {
+                LogState::process(log_state, log_receiver).await;
             });
             let (tx2, rx2) = tokio::sync::mpsc::channel(1000);
             let lua_engine_event_sender = setup_lua(app, tx.clone())?;
@@ -67,7 +84,7 @@ pub fn run() {
             }
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, reload_lua])
+        .invoke_handler(tauri::generate_handler![greet, reload_lua, get_logs])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
