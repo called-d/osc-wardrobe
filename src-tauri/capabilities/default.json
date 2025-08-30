@@ -4,7 +4,9 @@
   "description": "Capability for the main window",
   "windows": [
     "main",
-    "log-lua"
+    "log-lua",
+    "log-osc",
+    "log-all"
   ],
   "permissions": [
     "core:default",

@@ -32,6 +32,22 @@
         "label": "log-lua",
         "url": "console.html?target=lua",
         "visible": false
+      },
+      {
+        "title": "log (osc)",
+        "width": 800,
+        "height": 600,
+        "label": "log-osc",
+        "url": "console.html?target=osc",
+        "visible": false
+      },
+      {
+        "title": "log (all)",
+        "width": 800,
+        "height": 600,
+        "label": "log-all",
+        "url": "console.html?target=all",
+        "visible": false
       }
     ],
     "security": {

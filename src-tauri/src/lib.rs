@@ -415,6 +415,8 @@ fn setup_tray_menu(
         .build()?;
     let log_menu = SubmenuBuilder::new(app, "Logs")
         .text("log_lua", "Lua")
+        .text("log_osc", "OSC")
+        .text("log_all", "(all)")
         .build()?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -445,6 +447,18 @@ fn setup_tray_menu(
             }
             "log_lua" => {
                 if let Some(log_window) = app.get_webview_window("log-lua") {
+                    let _ = log_window.show();
+                    let _ = log_window.set_focus();
+                }
+            }
+            "log_osc" => {
+                if let Some(log_window) = app.get_webview_window("log-osc") {
+                    let _ = log_window.show();
+                    let _ = log_window.set_focus();
+                }
+            }
+            "log_all" => {
+                if let Some(log_window) = app.get_webview_window("log-all") {
                     let _ = log_window.show();
                     let _ = log_window.set_focus();
                 }

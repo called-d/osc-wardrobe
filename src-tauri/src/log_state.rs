@@ -82,7 +82,7 @@ impl LogState {
                         channel.send(LogEvent::Log { line: str.clone() }).unwrap();
                     }
                 }
-                if let Some(channel) = state.lock().expect("process.state").map.get("*") {
+                if let Some(channel) = state.lock().expect("process.state").map.get("all") {
                     channel.send(LogEvent::Log { line: str }).unwrap();
                 }
             }

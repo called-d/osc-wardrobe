@@ -78,8 +78,6 @@ logEvent.onmessage = (ev) => {
   }
 };
 
-invoke('get_logs', {target, logEvent});
-
 const clear = async () => {
   scrollToIndex.value = 0;
   await nextTick()
@@ -95,6 +93,17 @@ useEventListener(window.document, 'keydown', async (e) => {
     e.preventDefault();
   }
 })
+
+;(async () => {
+  while (true) {
+    try {
+      await nextTick()
+      await invoke('get_logs', {target, logEvent})
+      break
+    } catch (_e) {
+    }
+  }
+})()
 </script>
 
 <style>
