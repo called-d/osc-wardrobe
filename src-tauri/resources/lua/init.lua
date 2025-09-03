@@ -122,7 +122,7 @@ end
 function processor:find_avatar()
     local parameters = {}
     for k, v in pairs(self.avatar_context.parameters) do
-        parameters[k.."="..(v or "")] = true
+        parameters[string.format("%s=%s", k, v or "")] = true
     end
     return find(self.avatar_context.conditions, parameters)
 end
