@@ -21,6 +21,7 @@ use tauri_plugin_cli::CliExt;
 struct AppState {
     log_state: Arc<Mutex<log_state::LogState>>,
     application_event_sender: Sender<ApplicationEvent>,
+    tray_icon: Arc<Mutex<Option<tauri::tray::TrayIcon>>>,
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -67,6 +68,7 @@ pub fn run() {
             app.manage(Mutex::new(AppState {
                 log_state: log_state.clone(),
                 application_event_sender: tx.clone(),
+                tray_icon: Arc::new(Mutex::new(None)),
             }));
             tauri::async_runtime::spawn(async move {
                 LogState::process(log_state, log_receiver, lua_log_receiver).await;
@@ -408,13 +410,12 @@ where
     Ok(())
 }
 
-fn setup_tray_menu(
-    app: &mut App,
-    tx: Sender<ApplicationEvent>,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn build_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     let lua_menu = SubmenuBuilder::new(app, "Lua")
         .text("lua_reload", "Reload")
         .separator()
+        .separator()
+        .text("menu_reload", "Menu reload")
         .build()?;
     let directory_menu = SubmenuBuilder::new(app, "Open Folder")
         .text("directory_lua", "Lua")
@@ -428,13 +429,20 @@ fn setup_tray_menu(
         .build()?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(
+
+    Ok(Menu::with_items(
         app,
         &[&lua_menu, &directory_menu, &log_menu, &separator, &quit_i],
-    )?;
+    )?)
+}
 
+fn setup_tray_menu(
+    app: &mut App,
+    tx: Sender<ApplicationEvent>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let sender_ = tx.clone();
-    let _tray = TrayIconBuilder::new()
+    let menu = build_menu(app.app_handle())?;
+    let tray_icon = TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
         .show_menu_on_left_click(true)
@@ -471,6 +479,23 @@ fn setup_tray_menu(
                     let _ = log_window.set_focus();
                 }
             }
+            "menu_reload" => {
+                let state = app.state::<Mutex<AppState>>();
+                let Some(icon) = state
+                    .lock()
+                    .expect("state.")
+                    .tray_icon
+                    .lock()
+                    .expect("state.tray_icon")
+                    .clone()
+                else {
+                    debug!("icon is None");
+                    return;
+                };
+                icon.set_menu(Some(build_menu(app.app_handle()).expect("build_menu")))
+                    .expect("set menu on reload");
+                debug!("menu reload done");
+            }
             _ => (),
         })
         .on_tray_icon_event(|tray, event| {
@@ -483,5 +508,12 @@ fn setup_tray_menu(
             }
         })
         .build(app)?;
+    let state = app.state::<Mutex<AppState>>();
+    *state
+        .lock()
+        .expect("state. =")
+        .tray_icon
+        .lock()
+        .expect(".tray_icon") = Some(tray_icon);
     Ok(())
 }
