@@ -64,18 +64,40 @@ impl LogState {
     }
 
     pub fn print_to_log(&self, line: &str) {
+        let event = LogEvent::Print {
+            line: line.to_string(),
+        };
         if let Some(channel) = self.map.get("lua") {
-            channel
-                .send(LogEvent::Print {
-                    line: line.to_string(),
-                })
-                .unwrap();
+            channel.send(event.clone()).unwrap();
+        }
+        if let Some(channel) = self.map.get("all") {
+            channel.send(event).unwrap();
         }
     }
 
-    pub async fn process(state: Arc<Mutex<LogState>>, receiver: std::sync::mpsc::Receiver<String>) {
+    fn process_print(&self, receiver: &std::sync::mpsc::Receiver<String>) {
+        loop {
+            let Ok(str) = receiver.try_recv() else {
+                break;
+            };
+            self.print_to_log(&str);
+        }
+    }
+
+    pub async fn process(
+        state: Arc<Mutex<LogState>>,
+        receiver: std::sync::mpsc::Receiver<String>,
+        print_receiver: Option<std::sync::mpsc::Receiver<String>>,
+    ) {
         loop {
             tokio::task::yield_now().await;
+
+            if let Some(print_receiver) = &print_receiver {
+                state
+                    .lock()
+                    .expect("process.state")
+                    .process_print(print_receiver);
+            }
 
             if let Ok(str) = receiver.recv() {
                 if let Some(target) = get_target_name(&str) {

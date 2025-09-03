@@ -42,6 +42,7 @@ fn reload_lua(state: tauri::State<Mutex<AppState>>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (log_channel, log_receiver) = LogState::create();
+    let (lua_log_sender, lua_log_receiver) = channel::<String>();
     tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .plugin(
@@ -61,15 +62,17 @@ pub fn run() {
         .setup(|app| {
             let (tx, rx) = channel();
             let log_state = Arc::new(Mutex::new(log_channel));
+            let lua_log_sender = Some(lua_log_sender);
+            let lua_log_receiver = Some(lua_log_receiver);
             app.manage(Mutex::new(AppState {
                 log_state: log_state.clone(),
                 application_event_sender: tx.clone(),
             }));
             tauri::async_runtime::spawn(async move {
-                LogState::process(log_state, log_receiver).await;
+                LogState::process(log_state, log_receiver, lua_log_receiver).await;
             });
             let (tx2, rx2) = tokio::sync::mpsc::channel(1000);
-            let lua_engine_event_sender = setup_lua(app, tx.clone())?;
+            let lua_engine_event_sender = setup_lua(app, tx.clone(), lua_log_sender)?;
             setup_definitions(app, lua_engine_event_sender.clone())?;
             setup_tray_menu(app, tx.clone())?;
             let osc_receiver = setup_osc_server(app, rx2);
@@ -92,6 +95,7 @@ pub fn run() {
 fn setup_lua(
     app: &App,
     tx: Sender<ApplicationEvent>,
+    log_sender: Option<Sender<String>>,
 ) -> Result<Sender<LuaEngineEvent>, Box<dyn std::error::Error>> {
     debug!("extract lua directory");
     let lua_dir_src = app
@@ -139,6 +143,7 @@ fn setup_lua(
                 io_dir: lua_io_dir,
                 lua_engine_event_receiver: rx2,
                 application_event_sender: tx,
+                print_sender: log_sender,
             });
             let _ = engine.main().await;
 

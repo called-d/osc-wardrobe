@@ -10,6 +10,7 @@ use std::sync::mpsc::{Receiver, Sender};
 
 pub struct LuaEngineOption {
     pub application_event_sender: Sender<ApplicationEvent>,
+    pub print_sender: Option<Sender<String>>,
     pub lua_engine_event_receiver: Receiver<LuaEngineEvent>,
     pub base_dir: PathBuf,
     pub io_dir: PathBuf,
@@ -204,6 +205,22 @@ impl LuaEngine {
             })
             .expect("create_function");
         lua.globals().set("sleep", sleep).expect("sleep");
+
+        if let Some(print_sender) = self.option.print_sender.clone() {
+            let print = lua
+                .create_function(move |_lua, args: LuaMultiValue| {
+                    let s = args
+                        .into_iter()
+                        .map(|x| x.to_string().unwrap_or_default())
+                        .collect::<Vec<String>>()
+                        .join("\t");
+                    println!("{}", s);
+                    print_sender.send(s).expect("print");
+                    return Ok(0);
+                })
+                .expect("create_function");
+            lua.globals().set("print", print).expect("print");
+        }
     }
 
     fn jail(option: &LuaEngineOption) {
