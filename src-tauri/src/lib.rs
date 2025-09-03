@@ -373,7 +373,6 @@ fn setup_event_processor(
             tokio::select! {
                 Some(osc_msg) = osc_receiver.recv() => { match osc_msg {
                     osc::OscEvent::Message(message) => {
-                        debug!("osc received {:?}", message);
                         lua_sender.send(LuaEngineEvent::OscReceived(
                             message.addr,
                             serde_json::Value::Array(message.args.iter().map(osc_to_json).collect()),
