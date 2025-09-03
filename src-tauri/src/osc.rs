@@ -1,5 +1,5 @@
 use crate::osc::OscEvent::Message;
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use rosc::{OscMessage, OscPacket};
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, UnboundedSender};
@@ -117,6 +117,7 @@ impl OscService {
         vrchat_osc
             .register("osc_wardrobe", root_node, move |packet| {
                 if let OscPacket::Message(msg) = packet {
+                    debug!("{:?}", msg);
                     sender_.send(Message(msg)).unwrap();
                 }
             })
@@ -143,6 +144,7 @@ impl OscService {
 
         loop {
             tokio::task::yield_now().await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
         }
     }
 }

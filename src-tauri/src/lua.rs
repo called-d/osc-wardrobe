@@ -64,8 +64,9 @@ impl LuaEngine {
         Ok(())
     }
 
-    pub async fn process_event(&mut self) -> () {
+    pub async fn process_event(&mut self) -> i32 {
         // trace!("LuaEngine::process_event");
+        let mut counter = 0;
         loop {
             if let Ok(event) = self.option.lua_engine_event_receiver.try_recv() {
                 match event {
@@ -88,10 +89,12 @@ impl LuaEngine {
                     }
                     LuaEngineEvent::Reload => self.reload().await.expect("reload"),
                 }
+                counter += 1;
             } else {
                 break;
             }
         }
+        counter
     }
 
     async fn call_function(

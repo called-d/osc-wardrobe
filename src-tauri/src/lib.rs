@@ -143,7 +143,10 @@ fn setup_lua(
             let _ = engine.main().await;
 
             loop {
-                engine.process_event().await;
+                let process_event_count = engine.process_event().await;
+                if process_event_count == 0 {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+                }
             }
         });
     });

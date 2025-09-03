@@ -76,6 +76,7 @@ impl LogState {
     pub async fn process(state: Arc<Mutex<LogState>>, receiver: std::sync::mpsc::Receiver<String>) {
         loop {
             tokio::task::yield_now().await;
+
             if let Ok(str) = receiver.recv() {
                 if let Some(target) = get_target_name(&str) {
                     if let Some(channel) = state.lock().expect("process.state").map.get(target) {
