@@ -101,11 +101,13 @@ impl LogState {
 
             if let Ok(str) = receiver.recv() {
                 if let Some(target) = get_target_name(&str) {
-                    if let Some(channel) = state.lock().expect("process.state").map.get(target) {
+                    let state = state.lock().expect("process.state");
+                    if let Some(channel) = state.map.get(target) {
                         channel.send(LogEvent::Log { line: str.clone() }).unwrap();
                     }
                 }
-                if let Some(channel) = state.lock().expect("process.state").map.get("all") {
+                let state = state.lock().expect("process.state");
+                if let Some(channel) = state.map.get("all") {
                     channel.send(LogEvent::Log { line: str }).unwrap();
                 }
             }

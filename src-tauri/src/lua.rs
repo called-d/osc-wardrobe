@@ -69,31 +69,32 @@ impl LuaEngine {
         // trace!("LuaEngine::process_event");
         let mut counter = 0;
         loop {
-            match self.option.lua_engine_event_receiver.try_recv() { Ok(event) => {
-                match event {
-                    LuaEngineEvent::OscReceived(s, v) => {
-                        let args = {
-                            self.lua
-                                .lock()
-                                .expect("get lock for receive()")
-                                .to_value(&v)
-                        };
-                        if let Err(e) = self.call_function("receive", (s, args)).await {
-                            warn!("error on  Osc receive event: {:?}", e);
-                        };
+            match self.option.lua_engine_event_receiver.try_recv() {
+                Ok(event) => {
+                    match event {
+                        LuaEngineEvent::OscReceived(s, v) => {
+                            let args = {
+                                let lua = self.lua.lock().expect("get lock for receive()");
+                                lua.to_value(&v)
+                            };
+                            if let Err(e) = self.call_function("receive", (s, args)).await {
+                                warn!("error on  Osc receive event: {:?}", e);
+                            };
+                        }
+                        LuaEngineEvent::DefinitionUpdated(v) => {
+                            debug!("Definition updated event: {:?}", v);
+                            if let Err(e) = self.set_global(&["wardrobe", "definition"], v) {
+                                warn!("error on  DefinitionUpdated event: {:?}", e);
+                            };
+                        }
+                        LuaEngineEvent::Reload => self.reload().await.expect("reload"),
                     }
-                    LuaEngineEvent::DefinitionUpdated(v) => {
-                        debug!("Definition updated event: {:?}", v);
-                        if let Err(e) = self.set_global(&["wardrobe", "definition"], v) {
-                            warn!("error on  DefinitionUpdated event: {:?}", e);
-                        };
-                    }
-                    LuaEngineEvent::Reload => self.reload().await.expect("reload"),
+                    counter += 1;
                 }
-                counter += 1;
-            } _ => {
-                break;
-            }}
+                _ => {
+                    break;
+                }
+            }
         }
         counter
     }
@@ -116,13 +117,15 @@ impl LuaEngine {
         let lua = &self.lua.lock().expect("get lock for set_global()");
         let mut table = lua.globals();
         for key in keys {
-            match table.get(key.to_string()) { Ok(mlua::Value::Table(t)) => {
-                table = t
-            } _ => {
-                let t = lua.create_table()?;
-                table.set(key.to_string(), &t)?;
-                table = t
-            }}
+            let value = table.get(key.to_string());
+            match value {
+                Ok(mlua::Value::Table(t)) => table = t,
+                _ => {
+                    let t = lua.create_table()?;
+                    table.set(key.to_string(), &t)?;
+                    table = t
+                }
+            }
         }
         table
             .set(
@@ -206,7 +209,8 @@ impl LuaEngine {
             .expect("create_function");
         lua.globals().set("sleep", sleep).expect("sleep");
 
-        if let Some(print_sender) = self.option.print_sender.clone() {
+        let print_sender = self.option.print_sender.clone();
+        if let Some(print_sender) = print_sender {
             let print = lua
                 .create_function(move |_lua, args: LuaMultiValue| {
                     let s = args
