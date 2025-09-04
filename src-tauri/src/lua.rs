@@ -108,7 +108,7 @@ impl LuaEngine {
             let lua = &self.lua.lock().expect("get lock for call_function()");
             lua.globals().get::<mlua::Function>(function_name)?
         };
-        f.call_async(args).await?;
+        f.call_async::<()>(args).await?;
         Ok(())
     }
 
