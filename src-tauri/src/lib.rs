@@ -264,7 +264,7 @@ fn setup_definitions(
             .expect("watcher start");
         loop {
             tokio::task::yield_now().await;
-            if let Ok(event) = rx.try_recv() {
+            match rx.try_recv() { Ok(event) => {
                 match event {
                     Ok(event) => {
                         debug!("event: {:?}", event);
@@ -276,9 +276,9 @@ fn setup_definitions(
                         warn!("notify error: {:?}", e);
                     }
                 }
-            } else {
+            } _ => {
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            }
+            }}
         }
     });
     Ok(())

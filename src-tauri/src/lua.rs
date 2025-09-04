@@ -69,7 +69,7 @@ impl LuaEngine {
         // trace!("LuaEngine::process_event");
         let mut counter = 0;
         loop {
-            if let Ok(event) = self.option.lua_engine_event_receiver.try_recv() {
+            match self.option.lua_engine_event_receiver.try_recv() { Ok(event) => {
                 match event {
                     LuaEngineEvent::OscReceived(s, v) => {
                         let args = {
@@ -91,9 +91,9 @@ impl LuaEngine {
                     LuaEngineEvent::Reload => self.reload().await.expect("reload"),
                 }
                 counter += 1;
-            } else {
+            } _ => {
                 break;
-            }
+            }}
         }
         counter
     }
@@ -116,13 +116,13 @@ impl LuaEngine {
         let lua = &self.lua.lock().expect("get lock for set_global()");
         let mut table = lua.globals();
         for key in keys {
-            if let Ok(mlua::Value::Table(t)) = table.get(key.to_string()) {
+            match table.get(key.to_string()) { Ok(mlua::Value::Table(t)) => {
                 table = t
-            } else {
+            } _ => {
                 let t = lua.create_table()?;
                 table.set(key.to_string(), &t)?;
                 table = t
-            }
+            }}
         }
         table
             .set(
