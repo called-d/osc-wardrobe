@@ -2,6 +2,7 @@ mod application_event;
 mod log_state;
 mod lua;
 mod osc;
+mod update;
 
 use crate::application_event::ApplicationEvent;
 use crate::lua::LuaEngineEvent;
@@ -44,6 +45,7 @@ fn reload_lua(state: tauri::State<Mutex<AppState>>) {
 pub fn run() {
     let (log_channel, log_receiver) = LogState::create();
     let (lua_log_sender, lua_log_receiver) = channel::<String>();
+    nyquest_preset::register();
     tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .plugin(
@@ -73,6 +75,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 LogState::process(log_state, log_receiver, lua_log_receiver).await;
             });
+            auto_update(app.app_handle());
             let (tx2, rx2) = tokio::sync::mpsc::channel(1000);
             let lua_engine_event_sender = setup_lua(app, tx.clone(), lua_log_sender)?;
             setup_definitions(app, lua_engine_event_sender.clone())?;
@@ -384,6 +387,26 @@ fn setup_event_processor(
                     warn!("channel is closed");
                 },
             }
+        }
+    });
+}
+
+fn auto_update(app: &AppHandle) {
+    let version = app.package_info().version.clone();
+    info!("update check {}", version);
+    tauri::async_runtime::spawn(async move {
+        let update_result = update::check_for_updates(version).await;
+        match update_result {
+            Ok(Some(url)) => {
+                info!("open url: {}", url);
+                if tauri_plugin_opener::open_url(&url, None::<&str>).is_err() {
+                    error!("open url failed. {}", url);
+                }
+            }
+            Err(e) => {
+                error!("{}", e);
+            }
+            _ => {}
         }
     });
 }

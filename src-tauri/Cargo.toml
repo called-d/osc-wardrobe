@@ -34,6 +34,9 @@ notify-debouncer-mini = "0.6.0"
 fern = { version = "0.7.1", features = ["chrono"] }
 chrono = "0.4.41"
 regex = "1.11.2"
+semver = "1.0.27"
+nyquest = { version = "0.3.1", features = ["async", "json"] }
+nyquest-preset = { version = "0.3.0", features = ["async"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-cli = "2"
