@@ -57,5 +57,6 @@ jobs:
           tagName: __VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
           generateReleaseNotes: true
           releaseDraft: true
+          releaseName: __VERSION__
           prerelease: ${{ inputs.prerelease }}
           args: ${{ matrix.args }}
