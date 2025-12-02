@@ -3117,7 +3117,7 @@ dependencies = [
  "nyquest",
  "nyquest-preset",
  "regex",
- "rosc 0.10.1",
+ "rosc",
  "semver",
  "serde",
  "serde_json",
@@ -3824,16 +3824,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "rosc"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2e63d9e6b0d090be1485cf159b1e04c3973d2d3e1614963544ea2ff47a4a981"
-dependencies = [
- "byteorder",
- "nom",
 ]
 
 [[package]]
@@ -5341,7 +5331,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "log",
- "rosc 0.11.4",
+ "rosc",
  "serde",
  "serde_json",
  "socket2 0.5.10",
