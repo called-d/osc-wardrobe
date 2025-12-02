@@ -1,8 +1,8 @@
 [package]
 name = "osc-wardrobe"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+version = "0.1.0-alpha.1"
+description = "OSCQuery app with Lua scripting for change avatar"
+authors = ["called_D"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
