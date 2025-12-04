@@ -12,7 +12,7 @@ local function init()
     })
 end
 
-function main()
+function start()
     init()
 end
 

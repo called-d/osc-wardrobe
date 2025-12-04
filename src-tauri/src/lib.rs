@@ -150,7 +150,7 @@ fn setup_lua(
                 application_event_sender: tx,
                 print_sender: log_sender,
             });
-            let _ = engine.main().await;
+            let _ = engine.start().await;
 
             loop {
                 let process_event_count = engine.process_event().await;

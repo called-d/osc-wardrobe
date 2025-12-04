@@ -42,10 +42,10 @@ impl LuaEngine {
         LuaEngine::jail(&self.option);
         *self.lua.get_mut().expect("get mut") = Lua::new();
         self.load_libraries();
-        self.main().await
+        self.start().await
     }
-    pub async fn main(&self) -> LuaResult<()> {
-        let lua = &self.lua.lock().expect("get lock for main()");
+    pub async fn start(&self) -> LuaResult<()> {
+        let lua = &self.lua.lock().expect("get lock for start()");
 
         let main_path = self.option.base_dir.join("main.lua");
         debug!("main.lua exists: {}", main_path.exists());
@@ -58,9 +58,9 @@ impl LuaEngine {
             .await
             .expect("load main file");
         drop(main);
-        if let Ok(main) = lua.globals().get::<mlua::Function>("main") {
-            let return_value = main.call_async::<MultiValue>(()).await?;
-            debug!("main returns {:?}", return_value);
+        if let Ok(start) = lua.globals().get::<mlua::Function>("start") {
+            let return_value = start.call_async::<MultiValue>(()).await?;
+            debug!("start() returns {:?}", return_value);
         };
         Ok(())
     }
