@@ -1,6 +1,6 @@
 [package]
 name = "osc-wardrobe"
-version = "0.1.0-1"
+version = "0.1.0-2"
 description = "OSCQuery app with Lua scripting for change avatar"
 authors = ["called_D"]
 edition = "2024"
